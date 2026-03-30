@@ -7,8 +7,8 @@ export const logout = async () => {
   window.location.href = '/';
 };
 
-export const downloadReport = async (): Promise<Blob> => {
-  const response = await fetch('http://localhost:8000/api/reports', {
+export const downloadReport = async (startDate: string, endDate: string): Promise<Blob> => {
+  const response = await fetch(`http://localhost:8000/api/reports?start_date=${startDate}&end_date=${endDate}`, {
     credentials: 'include'
   });
   if (!response.ok) throw new Error('Unauthorized');

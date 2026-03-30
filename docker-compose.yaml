@@ -30,7 +30,6 @@ services:
       - "8080:8080"
     depends_on:
       - keycloak_db
-      - openldap
 
   frontend:
     build:
@@ -56,6 +55,7 @@ services:
       KEYCLOAK_CLIENT_SECRET: your-secret-here
     depends_on:
       - keycloak
+      - clickhouse
 
   openldap:
     image: osixia/openldap:1.5.0
@@ -71,3 +71,84 @@ services:
     volumes:
       - ./ldap/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/50-bootstrap.ldif
     command: --copy-service
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./clickhouse/data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: unless-stopped
+
+  airflow-db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      - ./postgres-airflow-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  airflow-init:
+    image: apache/airflow:2.8.1
+    depends_on:
+      - airflow-db
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=clickhouse-driver psycopg2-binary
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com
+    restart: "no"
+
+  airflow:
+    image: apache/airflow:2.8.1
+    depends_on:
+      - airflow-db
+      - airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _PIP_ADDITIONAL_REQUIREMENTS=clickhouse-driver psycopg2-binary
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    ports:
+      - "8081:8080"
+    command: webserver
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    depends_on:
+      - airflow-db
+      - airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=clickhouse-driver psycopg2-binary
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: scheduler
+    restart: unless-stopped

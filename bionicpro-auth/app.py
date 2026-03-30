@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, make_response, redirect
 from flask_cors import CORS
 from session_store import SessionStore
 from keycloak_client import KeycloakClient
+from clickhouse_driver import Client
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:3000"])
@@ -52,44 +53,38 @@ def get_report():
     session_id = request.cookies.get('session_id')
     if not session_id:
         return jsonify({'error': 'Unauthorized'}), 401
-
     session = session_store.get(session_id)
     if not session:
         return jsonify({'error': 'Session expired'}), 401
 
-    access_token = session['access_token']
-    refresh_token = session['refresh_token']
+    user = session['user']
+    client_id = user.get('preferred_username')   # предполагаем, что username == client_id
 
-    # Проверка срока действия access_token
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    if not start_date or not end_date:
+        return jsonify({'error': 'Missing start_date or end_date'}), 400
+
     try:
-        payload = jwt.decode(access_token, options={"verify_signature": False})
-        exp = payload.get('exp')
-        if exp and exp < time.time():
-            raise jwt.ExpiredSignatureError
-    except jwt.ExpiredSignatureError:
-        # Обновляем токены
-        try:
-            new_tokens = kc_client.refresh_tokens(refresh_token)
-            new_access = new_tokens['access_token']
-            new_refresh = new_tokens.get('refresh_token', refresh_token)
-            session_store.update_tokens(session_id, new_access, new_refresh)
-            access_token = new_access
-        except Exception:
-            session_store.delete(session_id)
-            return jsonify({'error': 'Session expired, please login again'}), 401
+        client = Client(host='clickhouse', port=9000)
+        rows = client.execute("""
+            SELECT client_name, report_date, avg_signal, total_events
+            FROM report_mart
+            WHERE client_id = %(client_id)s AND report_date BETWEEN %(start)s AND %(end)s
+            ORDER BY report_date
+        """, {'client_id': client_id, 'start': start_date, 'end': end_date})
+    except Exception as e:
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
 
-    # Ротация сессии
-    new_session_id = session_store.create(access_token, refresh_token, session['user'])
-    session_store.delete(session_id)
+    # Формируем CSV-ответ
+    output = "Client,Date,Avg Signal,Total Events\n"
+    for row in rows:
+        output += f"{row[0]},{row[1]},{row[2]},{row[3]}\n"
 
-    # Имитация отчёта
-    report_content = f"Отчёт для пользователя {session['user'].get('preferred_username', 'unknown')}\n\nДанные о работе протеза..."
-
-    resp = make_response(report_content, 200)
-    resp.headers['Content-Type'] = 'application/octet-stream'
-    resp.headers['Content-Disposition'] = 'attachment; filename=report.txt'
-    resp.set_cookie('session_id', new_session_id, httponly=True, secure=True, samesite='Lax', max_age=30*60)
-    return resp
+    response = make_response(output)
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = f'attachment; filename=report_{client_id}_{start_date}_{end_date}.csv'
+    return response
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
