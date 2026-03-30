@@ -11,7 +11,6 @@ const ReportPage: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Простой запрос для проверки сессии (можно сделать отдельный эндпоинт /auth/check)
         const response = await fetch('http://localhost:8000/api/reports?start_date=2025-01-01&end_date=2025-01-01', {
           credentials: 'include'
         });
@@ -34,13 +33,12 @@ const ReportPage: React.FC = () => {
         const text = await response.text();
         throw new Error(text || 'Failed to fetch report');
       }
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `report_${startDate}_${endDate}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(downloadUrl);
+      const data = await response.json();
+      if (data.download_url) {
+        window.location.href = data.download_url;
+      } else {
+        throw new Error('No download URL in response');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

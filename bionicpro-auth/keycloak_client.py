@@ -3,9 +3,8 @@ import requests
 class KeycloakClient:
     def __init__(self, server_url, realm, client_id, client_secret, public_url=None):
         self.token_url = f"{server_url}/realms/{realm}/protocol/openid-connect/token"
-        # Для редиректов используем public_url, если он задан, иначе server_url
-        base_url = public_url if public_url else server_url
-        self.auth_url = f"{base_url}/realms/{realm}/protocol/openid-connect/auth"
+        auth_base = public_url if public_url else server_url
+        self.auth_url = f"{auth_base}/realms/{realm}/protocol/openid-connect/auth"
         self.client_id = client_id
         self.client_secret = client_secret
 

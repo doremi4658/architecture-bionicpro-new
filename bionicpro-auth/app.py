@@ -6,23 +6,24 @@ from flask_cors import CORS
 from session_store import SessionStore
 from keycloak_client import KeycloakClient
 from clickhouse_driver import Client
+from s3_client import S3Client
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:3000"])
 
 session_store = SessionStore()
+s3 = S3Client()
 
-# Базовый URL сервиса, доступный из браузера (для redirect_uri)
-AUTH_SERVICE_URL = os.environ.get('AUTH_SERVICE_URL', 'http://localhost:8000')
-
-# Инициализация клиента Keycloak
 kc_client = KeycloakClient(
     server_url=os.environ.get('KEYCLOAK_URL', 'http://keycloak:8080'),
     realm=os.environ.get('KEYCLOAK_REALM', 'reports-realm'),
     client_id=os.environ.get('KEYCLOAK_CLIENT_ID', 'bionicpro-auth'),
     client_secret=os.environ.get('KEYCLOAK_CLIENT_SECRET', 'your-secret-here'),
-    public_url=os.environ.get('KEYCLOAK_PUBLIC_URL')  # для редиректа в браузере
+    public_url=os.environ.get('KEYCLOAK_PUBLIC_URL')
 )
+
+AUTH_SERVICE_URL = os.environ.get('AUTH_SERVICE_URL', 'http://localhost:8000')
+CDN_URL = os.environ.get('CDN_URL', 'http://localhost:8082')
 
 @app.route('/auth/login')
 def login():
@@ -32,15 +33,14 @@ def login():
         f"client_id=reports-frontend&"
         f"redirect_uri={redirect_uri}&"
         f"response_type=code&"
-        f"scope=openid&"
-        f"code_challenge_method=S256"
+        f"scope=openid"
     )
-    print(f"Redirecting to: {auth_url}")   # отладка
+    print(f"Redirecting to: {auth_url}")
     return redirect(auth_url)
 
 @app.route('/auth/callback')
 def callback():
-    print("Callback args:", request.args)  # отладка
+    print("Callback args:", request.args)
     code = request.args.get('code')
     if not code:
         return "Missing code", 400
@@ -67,13 +67,23 @@ def get_report():
         return jsonify({'error': 'Session expired'}), 401
 
     user = session['user']
-    client_id = user.get('preferred_username')   # предполагаем, что username == client_id
+    client_id = user.get('preferred_username')
 
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     if not start_date or not end_date:
         return jsonify({'error': 'Missing start_date or end_date'}), 400
 
+    # Формируем ключ для S3
+    s3_key = f"{client_id}/{start_date}_{end_date}.csv"
+    cdn_url = f"{CDN_URL}/reports/{s3.bucket}/{s3_key}"
+
+    # Проверяем, есть ли отчёт в S3
+    if s3.object_exists(s3_key):
+        # Отдаём ссылку на CDN
+        return jsonify({'download_url': cdn_url}), 200
+
+    # Если нет – генерируем из ClickHouse
     try:
         client = Client(host='clickhouse', port=9000)
         rows = client.execute("""
@@ -85,15 +95,16 @@ def get_report():
     except Exception as e:
         return jsonify({'error': f'Database error: {str(e)}'}), 500
 
-    # Формируем CSV-ответ
+    # Генерируем CSV
     output = "Client,Date,Avg Signal,Total Events\n"
     for row in rows:
         output += f"{row[0]},{row[1]},{row[2]},{row[3]}\n"
 
-    response = make_response(output)
-    response.headers['Content-Type'] = 'text/csv'
-    response.headers['Content-Disposition'] = f'attachment; filename=report_{client_id}_{start_date}_{end_date}.csv'
-    return response
+    # Сохраняем в S3
+    s3.put_object(s3_key, output.encode('utf-8'))
+
+    # Возвращаем ссылку на CDN
+    return jsonify({'download_url': cdn_url}), 200
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():

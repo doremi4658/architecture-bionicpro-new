@@ -1,6 +1,7 @@
 {
     "realm": "reports-realm",
     "enabled": true,
+    "sslRequired": "none",
     "accessTokenLifespan": 120,
     "roles": {
         "realm": [
@@ -72,8 +73,7 @@
             "publicClient": true,
             "redirectUris": ["http://localhost:3000/*", "http://localhost:8000/*"],
             "webOrigins": ["http://localhost:3000", "http://localhost:8000"],
-            "directAccessGrantsEnabled": true,
-            "attributes": { "pkce.code.challenge.method": "S256" }
+            "directAccessGrantsEnabled": true
         },
         {
             "clientId": "reports-api",
@@ -87,7 +87,11 @@
             "enabled": true,
             "clientAuthenticatorType": "client-secret",
             "secret": "your-secret-here",
-            "bearerOnly": true
+            "bearerOnly": false,
+            "publicClient": false,
+            "serviceAccountsEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "standardFlowEnabled": false
         }
     ],
     "userFederationProviders": [
@@ -133,6 +137,71 @@
                 "usePasswordModifyExtendedOp": "false",
                 "readTimeout": "0",
                 "connectionTimeout": "0"
+            }
+        }
+    ],
+    "userFederationMappers": [
+        {
+            "name": "username",
+            "federationMapperType": "user-attribute-ldap-mapper",
+            "config": {
+                "ldap.attribute.name": "uid",
+                "user.model.attribute.name": "username",
+                "read.only": "true",
+                "always.read.value.from.ldap": "true",
+                "is.mandatory.in.ldap": "true"
+            }
+        },
+        {
+            "name": "email",
+            "federationMapperType": "user-attribute-ldap-mapper",
+            "config": {
+                "ldap.attribute.name": "mail",
+                "user.model.attribute.name": "email",
+                "read.only": "true",
+                "always.read.value.from.ldap": "true",
+                "is.mandatory.in.ldap": "false"
+            }
+        },
+        {
+            "name": "firstName",
+            "federationMapperType": "user-attribute-ldap-mapper",
+            "config": {
+                "ldap.attribute.name": "givenName",
+                "user.model.attribute.name": "firstName",
+                "read.only": "true",
+                "always.read.value.from.ldap": "true",
+                "is.mandatory.in.ldap": "false"
+            }
+        },
+        {
+            "name": "lastName",
+            "federationMapperType": "user-attribute-ldap-mapper",
+            "config": {
+                "ldap.attribute.name": "sn",
+                "user.model.attribute.name": "lastName",
+                "read.only": "true",
+                "always.read.value.from.ldap": "true",
+                "is.mandatory.in.ldap": "false"
+            }
+        },
+        {
+            "name": "role-mapper",
+            "federationMapperType": "role-ldap-mapper",
+            "config": {
+                "ldap.roles.dn": "ou=groups,dc=bionicpro,dc=com",
+                "role.name.ldap.attribute": "cn",
+                "role.object.classes": "groupOfNames",
+                "membership.ldap.attribute": "member",
+                "membership.user.ldap.attribute": "uid",
+                "membership.user.ldap.object.class": "inetOrgPerson",
+                "roles.ldap.filter": "",
+                "use.realm.roles.mapping": "true",
+                "client.id": "",
+                "mode": "IMPORT",
+                "user.roles.retrieve.strategy": "LOAD_ROLES_BY_MEMBER_ATTRIBUTE",
+                "memberof.ldap.attribute": "",
+                "memberof.uses.dn": "false"
             }
         }
     ]
