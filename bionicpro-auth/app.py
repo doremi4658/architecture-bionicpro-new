@@ -1,3 +1,4 @@
+import os
 import time
 import jwt
 from flask import Flask, request, jsonify, make_response, redirect
@@ -10,16 +11,22 @@ app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:3000"])
 
 session_store = SessionStore()
+
+# Базовый URL сервиса, доступный из браузера (для redirect_uri)
+AUTH_SERVICE_URL = os.environ.get('AUTH_SERVICE_URL', 'http://localhost:8000')
+
+# Инициализация клиента Keycloak
 kc_client = KeycloakClient(
-    server_url="http://keycloak:8080",
-    realm="reports-realm",
-    client_id="bionicpro-auth",
-    client_secret="your-secret-here"
+    server_url=os.environ.get('KEYCLOAK_URL', 'http://keycloak:8080'),
+    realm=os.environ.get('KEYCLOAK_REALM', 'reports-realm'),
+    client_id=os.environ.get('KEYCLOAK_CLIENT_ID', 'bionicpro-auth'),
+    client_secret=os.environ.get('KEYCLOAK_CLIENT_SECRET', 'your-secret-here'),
+    public_url=os.environ.get('KEYCLOAK_PUBLIC_URL')  # для редиректа в браузере
 )
 
 @app.route('/auth/login')
 def login():
-    redirect_uri = request.host_url.rstrip('/') + '/auth/callback'
+    redirect_uri = AUTH_SERVICE_URL + '/auth/callback'
     auth_url = (
         f"{kc_client.auth_url}?"
         f"client_id=reports-frontend&"
@@ -28,15 +35,17 @@ def login():
         f"scope=openid&"
         f"code_challenge_method=S256"
     )
+    print(f"Redirecting to: {auth_url}")   # отладка
     return redirect(auth_url)
 
 @app.route('/auth/callback')
 def callback():
+    print("Callback args:", request.args)  # отладка
     code = request.args.get('code')
     if not code:
         return "Missing code", 400
 
-    token_data = kc_client.exchange_code(code, request.host_url.rstrip('/') + '/auth/callback')
+    token_data = kc_client.exchange_code(code, AUTH_SERVICE_URL + '/auth/callback')
     access_token = token_data['access_token']
     refresh_token = token_data['refresh_token']
 

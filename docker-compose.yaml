@@ -53,6 +53,8 @@ services:
       KEYCLOAK_REALM: reports-realm
       KEYCLOAK_CLIENT_ID: bionicpro-auth
       KEYCLOAK_CLIENT_SECRET: your-secret-here
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      AUTH_SERVICE_URL: http://localhost:8000
     depends_on:
       - keycloak
       - clickhouse
