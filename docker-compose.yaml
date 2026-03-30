@@ -26,7 +26,6 @@ services:
       - --http-enabled=true
       - --hostname-strict=false
       - --hostname=localhost
-      - --import-realm
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     ports:
