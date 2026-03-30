@@ -1,0 +1,48 @@
+# Base DN
+dn: dc=bionicpro,dc=com
+objectClass: top
+objectClass: domain
+dc: bionicpro
+
+# Admin user (already exists in OpenLDAP, but we add groups)
+dn: ou=users,dc=bionicpro,dc=com
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=bionicpro,dc=com
+objectClass: organizationalUnit
+ou: groups
+
+# Users
+dn: uid=ldapuser1,ou=users,dc=bionicpro,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+uid: ldapuser1
+cn: LDAP User One
+sn: One
+givenName: LDAP
+mail: ldapuser1@bionicpro.com
+userPassword: {SSHA}5sT0Y6Yz7v5X5c6T5s0Y5s0Y5s0Y5s0Y==  # password: ldappass1
+
+dn: uid=ldapuser2,ou=users,dc=bionicpro,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+uid: ldapuser2
+cn: LDAP User Two
+sn: Two
+givenName: LDAP
+mail: ldapuser2@bionicpro.com
+userPassword: {SSHA}5sT0Y6Yz7v5X5c6T5s0Y5s0Y5s0Y5s0Y==  # password: ldappass2
+
+# Groups (Roles)
+dn: cn=user,ou=groups,dc=bionicpro,dc=com
+objectClass: groupOfNames
+cn: user
+member: uid=ldapuser1,ou=users,dc=bionicpro,dc=com
+
+dn: cn=prothetic_user,ou=groups,dc=bionicpro,dc=com
+objectClass: groupOfNames
+cn: prothetic_user
+member: uid=ldapuser2,ou=users,dc=bionicpro,dc=com
