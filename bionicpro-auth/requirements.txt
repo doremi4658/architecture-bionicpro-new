@@ -1,6 +1,5 @@
-Flask==2.3.3
-requests==2.31.0
-PyJWT==2.8.0
+flask==2.3.3
 flask-cors==4.0.0
-clickhouse-driver==0.2.6
-boto3==1.28.57
+httpx==0.25.1
+itsdangerous==2.1.2
+pyjwt==2.8.0

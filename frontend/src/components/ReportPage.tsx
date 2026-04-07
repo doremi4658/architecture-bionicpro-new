@@ -1,96 +1,172 @@
-import React, { useState, useEffect } from 'react';
-import { login, logout } from '../services/auth';
+import React, { useEffect, useState } from 'react';
+
+const API_URL = process.env.REACT_APP_API_URL ?? 'http://localhost:8000';
+
+type ReportPayload = Record<string, unknown>;
+
+type ReportResponse =
+  | { cdnUrl: string; meta?: Record<string, unknown> }
+  | ReportPayload;
 
 const ReportPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
-  const [startDate, setStartDate] = useState('2025-01-01');
-  const [endDate, setEndDate] = useState('2025-12-31');
+
+  const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<ReportPayload | null>(null);
+  const [cdnUrl, setCdnUrl] = useState<string | null>(null);
+
+  // Состояния для выбора периода
+  const [startDate, setStartDate] = useState<string>(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
+  const refreshSession = async () => {
+    try {
+      setAuthLoading(true);
+      const res = await fetch(`${API_URL}/api/session`, { credentials: 'include' });
+      const data = (await res.json()) as { authenticated?: boolean };
+      setAuthenticated(Boolean(data?.authenticated));
+    } catch {
+      setAuthenticated(false);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/reports?start_date=2025-01-01&end_date=2025-01-01', {
-          credentials: 'include'
-        });
-        if (response.status === 401) throw new Error('Unauthorized');
-        setAuthenticated(true);
-      } catch {
-        setAuthenticated(false);
-      }
-    };
-    checkAuth();
+    void refreshSession();
   }, []);
 
-  const handleDownload = async () => {
-    setLoading(true);
-    setError(null);
+  const handleLogin = () => {
+    window.location.href = `${API_URL}/auth/login`;
+  };
+
+  const handleSwitchAccount = () => {
+    window.location.href = `${API_URL}/switch-account`;
+  };
+
+  const downloadReport = async () => {
+    if (!startDate || !endDate) {
+      setError('Пожалуйста, выберите начальную и конечную дату');
+      return;
+    }
+
     try {
-      const url = `http://localhost:8000/api/reports?start_date=${startDate}&end_date=${endDate}`;
-      const response = await fetch(url, { credentials: 'include' });
+      setLoading(true);
+      setError(null);
+      setReport(null);
+      setCdnUrl(null);
+
+      const response = await fetch(
+        `${API_URL}/api/reports?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`,
+        {
+          method: 'GET',
+          credentials: 'include',
+        }
+      );
+
+      if (response.status === 401) {
+        await refreshSession();
+        handleLogin();
+        return;
+      }
+
+      const data = (await response.json()) as ReportResponse;
+
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || 'Failed to fetch report');
+        setError(typeof (data as any)?.detail === 'string' ? ((data as any).detail as string) : `HTTP ${response.status}`);
+        return;
       }
-      const data = await response.json();
-      if (data.download_url) {
-        window.location.href = data.download_url;
+
+      if (typeof (data as any)?.cdnUrl === 'string') {
+        setCdnUrl((data as any).cdnUrl as string);
+        setReport(data as any);
       } else {
-        throw new Error('No download URL in response');
+        setReport(data as ReportPayload);
       }
-    } catch (err: any) {
-      setError(err.message);
+
+      await refreshSession();
+    } catch (err) {
+      setError('Ошибка доступа');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!authenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-        <button onClick={login} className="px-4 py-2 bg-blue-500 text-white rounded">
-          Login
-        </button>
-      </div>
-    );
-  }
+  const authButtonText = authLoading ? 'Проверка сессии...' : authenticated ? 'Сменить аккаунт' : 'Войти';
+  const authButtonHandler = authenticated ? handleSwitchAccount : handleLogin;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <div className="p-8 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-6">Usage Reports</h1>
-        <div className="mb-4 flex space-x-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Start Date</label>
+      <div className="p-8 bg-white rounded-lg shadow-md w-full max-w-2xl">
+        <h1 className="text-2xl font-bold mb-6">BionicPRO Reports</h1>
+
+        {/* Блок выбора периода */}
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex gap-4 items-center">
+            <label className="font-semibold">Период:</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              className="border p-2 rounded"
+              required
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">End Date</label>
+            <span>—</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              className="border p-2 rounded"
+              required
             />
           </div>
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={loading}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-        >
-          {loading ? 'Generating...' : 'Download Report'}
-        </button>
+
+        <div className="flex gap-4 mb-6">
+          <button
+            onClick={downloadReport}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+            disabled={loading}
+          >
+            Download Report
+          </button>
+
+          <button
+            onClick={authButtonHandler}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            disabled={loading || authLoading}
+          >
+            {authButtonText}
+          </button>
+        </div>
+
         {error && <div className="mt-4 text-red-500">{error}</div>}
-        <button onClick={logout} className="mt-4 text-sm text-gray-600 hover:underline">
-          Logout
-        </button>
+
+        {cdnUrl && (
+          <div className="mt-4">
+            <div className="font-semibold mb-2">Отчёт сохранён и доступен по ссылке (CDN)</div>
+            <a className="text-blue-600 underline break-all" href={cdnUrl} target="_blank" rel="noreferrer">
+              {cdnUrl}
+            </a>
+          </div>
+        )}
+
+        {report && (
+          <div className="mt-4">
+            <h2 className="text-lg font-semibold mb-2">Полученный отчёт</h2>
+            <pre className="bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm">
+              {JSON.stringify(report, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   );
